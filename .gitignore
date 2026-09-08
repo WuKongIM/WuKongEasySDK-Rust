@@ -1,3 +1,7 @@
 /target/
 /.worktrees/
 .env
+/tests/acceptance/node_modules/
+/.acceptance/
+/test-server/
+__pycache__/

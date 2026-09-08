@@ -18,9 +18,9 @@ use tokio::{
     time::{self, Instant},
 };
 use tokio_tungstenite::{
-    connect_async_with_config,
+    connect_async_tls_with_config,
     tungstenite::{protocol::WebSocketConfig, Message},
-    MaybeTlsStream, WebSocketStream,
+    Connector, MaybeTlsStream, WebSocketStream,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -35,6 +35,7 @@ pub struct Client {
 }
 struct Inner {
     url: String,
+    tls: Arc<rustls::ClientConfig>,
     auth: Auth,
     options: Options,
     events: broadcast::Sender<Event>,
@@ -74,6 +75,7 @@ struct Pending {
 }
 struct Worker {
     url: String,
+    tls: Arc<rustls::ClientConfig>,
     auth: Auth,
     options: Options,
     events: broadcast::Sender<Event>,
@@ -113,10 +115,12 @@ impl Client {
         if auth.uid.trim().is_empty() || auth.token.is_empty() || auth.device_id.trim().is_empty() {
             return Err(Error::InvalidInput("uid, token and device_id are required"));
         }
+        let tls = tls_config(&options)?;
         let (events, _) = broadcast::channel(options.event_capacity);
         Ok(Self {
             inner: Arc::new(Inner {
                 url,
+                tls,
                 auth,
                 slots: Arc::new(Semaphore::new(options.max_in_flight)),
                 options,
@@ -154,6 +158,7 @@ impl Client {
             let cancel = CancellationToken::new();
             let worker = Worker {
                 url: self.inner.url.clone(),
+                tls: self.inner.tls.clone(),
                 auth: self.inner.auth.clone(),
                 options: self.inner.options.clone(),
                 events: self.inner.events.clone(),
@@ -376,9 +381,14 @@ impl Worker {
             let config = WebSocketConfig::default()
                 .max_message_size(Some(self.options.max_message_size))
                 .max_frame_size(Some(self.options.max_message_size));
-            let (mut socket, _) = connect_async_with_config(&self.url, Some(config), true)
-                .await
-                .map_err(|_| Error::Transport)?;
+            let (mut socket, _) = connect_async_tls_with_config(
+                &self.url,
+                Some(config),
+                true,
+                Some(Connector::Rustls(self.tls.clone())),
+            )
+            .await
+            .map_err(|_| Error::Transport)?;
             let id = uuid::Uuid::new_v4().to_string();
             self.write(&mut socket, protocol::connect(&self.auth, &id))
                 .await?;
@@ -524,4 +534,23 @@ fn reconnect_delay(options: &Options, attempt: u32) -> Duration {
     let jitter = uuid::Uuid::new_v4().as_u128() % (jitter_bound + 1);
     base.saturating_add(Duration::from_millis(jitter as u64))
         .min(options.max_reconnect_delay)
+}
+
+/// Construct trust once per Client; reconnect reuses it without global provider changes.
+fn tls_config(options: &Options) -> Result<Arc<rustls::ClientConfig>, Error> {
+    let mut roots = rustls::RootCertStore::empty();
+    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    for certificate in &options.additional_root_certificates {
+        roots
+            .add(rustls::pki_types::CertificateDer::from(certificate.clone()))
+            .map_err(|_| Error::InvalidInput("invalid DER root certificate"))?;
+    }
+    let config = rustls::ClientConfig::builder_with_provider(Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .map_err(|_| Error::InvalidInput("unsupported TLS configuration"))?
+    .with_root_certificates(roots)
+    .with_no_client_auth();
+    Ok(Arc::new(config))
 }

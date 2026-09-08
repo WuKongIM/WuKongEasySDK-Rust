@@ -98,3 +98,26 @@ cargo package --locked
 ```
 
 [examples/roundtrip.rs](examples/roundtrip.rs) 可验证真实服务端双向 Unicode 消息、心跳、重连与清理；提供 `WK_PEER_TOKEN` 时创建第二个 Rust 客户端，省略时使用 [JS 对端脚本](tests/interop.mjs)。需要事先由业务后端分别注册身份。精确验证记录和未覆盖范围见 [docs/VALIDATION.md](docs/VALIDATION.md)。
+
+
+## WSS 私有证书与持续验收
+
+私有 CA 可通过 `Options.additional_root_certificates` 添加 DER 根证书；最多
+16 张，每张不超过 64 KiB，不接收私钥。公共 WebPKI 根仍保留，域名与有效期校验始终启用。
+五项 TLS 测试覆盖可信 CA、不可信 CA、错误域名、过期证书和无效配置。
+
+CI 自动构建固定版本的 WuKongIM 单节点集群（256 Hash Slot、开启 Token 校验），
+先验证 Rust/Rust 收发和错误 Token 拒绝，再与真实 npm `easyjssdk@2.0.4` 进行
+120 秒 WSS Unicode 收发。期间中断 Rust 连接三次，每次都要求自动重连后恢复收发。
+手动运行 `Real server acceptance` 工作流可选择 600 秒。
+
+```bash
+git clone https://github.com/WuKongIM/WuKongIM.git test-server
+git -C test-server checkout 27a39f15bf163b433f417b78ab6bfc6e589585e5
+python3 tests/acceptance/run.py --server-source test-server --seconds 120
+```
+
+需要 Rust 1.86+、Go 1.25.11、Node 22.12+ 与 npm、Python 3.11+、OpenSSL。
+测试使用临时 CA、合成身份、回环监听，并清理自己启动的进程。
+成功回执 `.acceptance/receipt.json` 记录精确源码、消息数量、断网恢复与清理；
+该有限时长验收不代表容量或多日稳定性结论。

@@ -10,6 +10,9 @@ RECVACK, heartbeat, bounded reconnection, and custom event notifications.
 Rust **1.86+** with Tokio. Package: `wukong-easy-sdk`; import: `wukong_easy_sdk`.
 Native TCP/TLS transports are supported; browser/WASM is outside this version.
 WSS uses rustls and WebPKI roots with certificate verification enabled.
+For private PKI, add DER roots through `Options.additional_root_certificates`;
+public roots remain trusted, and hostname/expiry checks stay enabled. This accepts
+at most 16 certificates of 64 KiB each and does not accept private keys.
 
 ## Install
 
@@ -139,6 +142,7 @@ not proof that a listener handled or persisted the event.
 | `max_in_flight` | 256 across queued and pending sends; excess returns `Backpressure` |
 | `event_capacity` | 256; slow listeners get `RecvError::Lagged` |
 | `max_message_size` | 1 MiB per complete incoming/outgoing JSON-RPC message |
+| `additional_root_certificates` | Empty; optional extra DER CA roots |
 
 Durations must be positive and at most one day; reconnect cap must be at least
 the initial delay; retries are at most 100; queue counts are 1–65,536; message
@@ -193,3 +197,27 @@ JS peer with SIGTERM afterwards. It has a 30-second deadline and echoes two
 messages. [docs/VALIDATION.md](docs/VALIDATION.md) records exact verified versions
 and limits. Production use must validate its own WSS/proxy, credential rotation,
 network, OS and load conditions.
+
+
+### Automated real-server acceptance
+
+CI builds a pinned WuKongIM single-node cluster with 256 Hash Slots and Token
+validation, runs Rust/Rust messaging and explicit invalid-Token rejection, then
+runs Rust against npm `easyjssdk@2.0.4` through a TLS proxy. During sustained
+Unicode exchanges it cuts the Rust transport three times and requires automatic
+reconnect plus successful messaging after every recovery. Certificates, identity
+setup, listeners and processes belong to the test harness and are cleaned up.
+
+```bash
+git clone https://github.com/WuKongIM/WuKongIM.git test-server
+git -C test-server checkout 27a39f15bf163b433f417b78ab6bfc6e589585e5
+python3 tests/acceptance/run.py --server-source test-server --seconds 120
+```
+
+Prerequisites: Rust 1.86+, Go 1.25.11, Node 22.12+ with npm, Python 3.11+ and
+OpenSSL. The default CI run lasts 120 seconds of WSS messaging; a manual
+`Real server acceptance` run accepts 600 seconds. A successful run retains
+`.acceptance/receipt.json`, including exact source revisions, message counts,
+interruptions and cleanup. This bounded recovery check is not a capacity or
+multi-day soak claim. Five separate TLS tests cover trusted roots, unknown CA,
+wrong hostname, expired certificates and invalid configuration.
