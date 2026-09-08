@@ -23,8 +23,8 @@ async fn receive(
 }
 #[tokio::main]
 async fn main() {
-    if run().await.is_err() {
-        eprintln!("Online roundtrip failed");
+    if let Err(error) = run().await {
+        eprintln!("Online roundtrip failed: {error}");
         std::process::exit(1);
     }
 }

@@ -118,6 +118,10 @@ pub struct Options {
     pub event_capacity: usize,
     /// Maximum complete incoming or outgoing JSON-RPC message size in bytes.
     pub max_message_size: usize,
+    /// Additional trusted DER-encoded root certificates, alongside WebPKI roots.
+    /// At most 16 certificates, each at most 64 KiB; hostname and validity checks
+    /// remain enabled. Empty by default. Never put private keys here.
+    pub additional_root_certificates: Vec<Vec<u8>>,
 }
 impl Default for Options {
     fn default() -> Self {
@@ -133,11 +137,22 @@ impl Default for Options {
             max_in_flight: 256,
             event_capacity: 256,
             max_message_size: 1024 * 1024,
+            additional_root_certificates: Vec::new(),
         }
     }
 }
 impl Options {
     pub(crate) fn validate(&self) -> Result<(), Error> {
+        if self.additional_root_certificates.len() > 16
+            || self
+                .additional_root_certificates
+                .iter()
+                .any(|cert| cert.is_empty() || cert.len() > 65536)
+        {
+            return Err(Error::InvalidInput(
+                "invalid additional root certificate limit",
+            ));
+        }
         let durations = [
             self.connect_timeout,
             self.request_timeout,

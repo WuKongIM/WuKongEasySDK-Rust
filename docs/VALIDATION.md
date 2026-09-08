@@ -37,3 +37,20 @@ The CI matrix checks compilation/tests on Linux, Windows and macOS separately;
 its actual workflow result is distinct from this local record. Custom-event
 handling is verified against mock protocol notifications, not asserted as a
 product-wide event-emission guarantee.
+
+
+## Release acceptance additions
+
+The next source revision adds five real TLS certificate tests (trusted private
+CA, untrusted CA, hostname mismatch, expiry and invalid configuration) and
+`tests/acceptance/run.py` for bounded Rust/JS WSS messaging with three transport
+cuts. Receipt files are produced only after checks and owned-process cleanup
+succeed; CI retains exact-SHA receipts as artifacts.
+
+The initial sustained run against server `132e46209d98fa0425cc0f88e7a97080cdad044d`
+failed because queued server WebSocket payloads referenced a reused read buffer.
+A deterministic two-read regression reproduced corruption. The acceptance
+harness therefore pins the server fix `27a39f15bf163b433f417b78ab6bfc6e589585e5`
+([server PR #901](https://github.com/WuKongIM/WuKongIM/pull/901)); do not attribute
+successful recovery on that fix to the older server revision. Five certificate
+tests and all 22 original Rust tests pass, as does `cargo publish --dry-run`.
