@@ -7,6 +7,10 @@ retains a redacted JSON receipt, and always stops every process it starts.
 import argparse
 import asyncio
 import contextlib
+import hashlib
+import shutil
+import tarfile
+import tomllib
 import json
 import os
 from pathlib import Path
@@ -23,6 +27,64 @@ SDK = Path(__file__).resolve().parents[2]
 
 def command(args, **kwargs):
     return subprocess.run(args, check=True, capture_output=True, text=True, timeout=600, **kwargs)
+
+
+# This immutable public artifact is independent of the checkout running the harness.
+REGISTRY_VERSION = "0.1.0"
+REGISTRY_REVISION = "5b4a59cdbb66a9e0c3878e73ba4656f08ee05c6b"
+REGISTRY_CHECKSUM = "0029747f10b86f566e2d659535df0954114769a90962e562fb522a95e5508719"
+
+
+def registry_consumer(directory, env):
+    """Build only public-API probes with a fresh cache and verified registry provenance."""
+    consumer = directory / "consumer"
+    examples = consumer / "examples"
+    examples.mkdir(parents=True)
+    cargo_home = directory / "cargo-home"
+    cargo_home.mkdir()
+    consumer_env = {key: value for key, value in env.items()
+                    if not key.startswith("CARGO_") and key not in ("RUSTFLAGS", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER")}
+    consumer_env["CARGO_HOME"] = str(cargo_home)
+    consumer_env["CARGO_TARGET_DIR"] = str(consumer / "target")
+    (consumer / "Cargo.toml").write_text(f'''[package]
+name = "wukong-registry-acceptance"
+version = "0.0.0"
+edition = "2021"
+[dependencies]
+wukong-easy-sdk = "={REGISTRY_VERSION}"
+serde_json = "1"
+uuid = {{ version = "1", features = ["v4"] }}
+tokio = {{ version = "1", features = ["full"] }}
+''')
+    probe_checksums = {}
+    for name in ("roundtrip", "auth_check", "acceptance"):
+        source = SDK / "examples" / f"{name}.rs"
+        shutil.copyfile(source, examples / source.name)
+        probe_checksums[source.name] = hashlib.sha256(source.read_bytes()).hexdigest()
+    command(["cargo", "generate-lockfile"], cwd=consumer, env=consumer_env)
+    lock = tomllib.loads((consumer / "Cargo.lock").read_text())
+    packages = [p for p in lock["package"] if p["name"] == "wukong-easy-sdk"]
+    if len(packages) != 1 or packages[0].get("version") != REGISTRY_VERSION or packages[0].get("source") != "registry+https://github.com/rust-lang/crates.io-index" or packages[0].get("checksum") != REGISTRY_CHECKSUM:
+        raise RuntimeError("Cargo.lock does not resolve the exact public registry artifact")
+    command(["cargo", "fetch", "--locked"], cwd=consumer, env=consumer_env)
+    archives = list((cargo_home / "registry/cache").glob(f"*/wukong-easy-sdk-{REGISTRY_VERSION}.crate"))
+    if len(archives) != 1 or hashlib.sha256(archives[0].read_bytes()).hexdigest() != REGISTRY_CHECKSUM:
+        raise RuntimeError("downloaded crate checksum mismatch")
+    with tarfile.open(archives[0]) as archive:
+        vcs = json.load(archive.extractfile(f"wukong-easy-sdk-{REGISTRY_VERSION}/.cargo_vcs_info.json"))
+        if vcs["git"]["sha1"] != REGISTRY_REVISION or vcs["git"].get("dirty", False):
+            raise RuntimeError("published crate source identity mismatch")
+    try:
+        command(["cargo", "build", "--locked", "--examples"], cwd=consumer, env=consumer_env)
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError("registry consumer build failed: " + error.stderr[-6000:]) from error
+    return consumer / "target/debug/examples", {
+        "distribution": "crates.io", "package": "wukong-easy-sdk", "version": REGISTRY_VERSION,
+        "package_source_revision": REGISTRY_REVISION, "archive_sha256": REGISTRY_CHECKSUM,
+        "empty_cargo_cache": True, "probe_sha256": probe_checksums,
+        "consumer_lock_sha256": hashlib.sha256((consumer / "Cargo.lock").read_bytes()).hexdigest(),
+        "rustc": command(["rustc", "--version"], env=consumer_env).stdout.strip(),
+    }
 
 
 def available_ports():
@@ -141,7 +203,13 @@ async def run(args, directory):
     binary = directory / "wukongim"
     print("Building pinned WuKongIM server", flush=True)
     await asyncio.to_thread(command, ["go", "build", "-o", str(binary), "./cmd/wukongim"], cwd=source, env=env)
-    await asyncio.to_thread(command, ["cargo", "build", "--locked", "--examples"], cwd=SDK, env=env)
+    if args.distribution == "registry":
+        print("Building independently downloaded crates.io consumer", flush=True)
+        executables, distribution = await asyncio.to_thread(registry_consumer, directory, env)
+    else:
+        await asyncio.to_thread(command, ["cargo", "build", "--locked", "--examples"], cwd=SDK, env=env)
+        executables = SDK / "target/debug/examples"
+        distribution = {"distribution": "source"}
     await asyncio.to_thread(command, ["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"], cwd=SDK / "tests/acceptance", env=env)
     tls, der = await asyncio.to_thread(certificates, directory)
     rpc, api, manager, tcp, ws = available_ports()
@@ -211,14 +279,14 @@ dir="{directory}/logs"
                 request = urllib.request.Request(f"http://127.0.0.1:{api}/user/token", data=json.dumps({"uid": uid, "token": uid + "-synthetic-token", "device_flag": flag, "device_level": 1}).encode(), headers={"Content-Type": "application/json"})
                 await asyncio.to_thread(lambda: urllib.request.urlopen(request, timeout=10).read())
             client_env = {**env, "WK_WS_URL": f"ws://127.0.0.1:{ws}", "WK_UID": "rust-alice", "WK_TOKEN": "rust-alice-synthetic-token", "WK_PEER_UID": "rust-bob", "WK_PEER_TOKEN": "rust-bob-synthetic-token"}
-            roundtrip = SDK / "target/debug/examples/roundtrip"
+            roundtrip = executables / "roundtrip"
             # Explicit timeout for each executable; no server/client process escapes ownership.
             result = await asyncio.to_thread(subprocess.run, [str(roundtrip)], env=client_env, capture_output=True, text=True, timeout=30)
             if result.returncode:
                 raise RuntimeError("Rust/Rust roundtrip failed: " + result.stderr[:1000])
             print("Rust/Rust roundtrip passed", flush=True)
             # Check actual error category, not an arbitrary nonzero process exit.
-            wrong = await asyncio.to_thread(subprocess.run, [str(SDK / "target/debug/examples/auth_check")], env={**client_env, "WK_TOKEN": "incorrect-token"}, capture_output=True, text=True, timeout=10)
+            wrong = await asyncio.to_thread(subprocess.run, [str(executables / "auth_check")], env={**client_env, "WK_TOKEN": "incorrect-token"}, capture_output=True, text=True, timeout=10)
             if wrong.returncode or wrong.stdout.strip() != "AUTH_REJECTED":
                 raise RuntimeError("invalid Token rejection was not proven")
             peer_env = {**env, "WK_WS_URL": f"ws://127.0.0.1:{ws}", "WK_UID": "js-bob", "WK_TOKEN": "js-bob-synthetic-token", "WK_TEST_SECONDS": str(args.seconds)}
@@ -228,7 +296,7 @@ dir="{directory}/logs"
             listener = await asyncio.start_server(proxy.handle, "127.0.0.1", 0, ssl=tls, ssl_handshake_timeout=3)
             port = listener.sockets[0].getsockname()[1]
             probe_env = {**env, "WK_WS_URL": f"wss://127.0.0.1:{port}", "WK_TEST_CA_DER": str(der), "WK_UID": "rust-alice", "WK_TOKEN": "rust-alice-synthetic-token", "WK_PEER_UID": "js-bob", "WK_TEST_SECONDS": str(args.seconds)}
-            probe = await asyncio.create_subprocess_exec(str(SDK / "target/debug/examples/acceptance"), env=probe_env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            probe = await asyncio.create_subprocess_exec(str(executables / "acceptance"), env=probe_env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
 
             async def interrupt():
                 for index in range(1, 4):
@@ -250,6 +318,7 @@ dir="{directory}/logs"
                 raise RuntimeError("JS peer failed or did not confirm replies")
             if sdk_revision != command(["git", "rev-parse", "HEAD"], cwd=SDK).stdout.strip() or sdk_status != command(["git", "status", "--porcelain", "--untracked-files=no"], cwd=SDK).stdout:
                 raise RuntimeError("SDK source changed during acceptance")
+            receipt.update(distribution)
             receipt.update({"server_revision": revision, "sdk_revision": sdk_revision, "sdk_tree_clean": not sdk_status.strip(), "js_package": "easyjssdk@2.0.4", "topology": "single-node cluster", "hash_slots": 256, "token_auth_on": True, "incorrect_token": "rejected", "transport": "WSS with verified private CA and hostname", "rust_rust": "pass", "network_cuts": proxy.cut_receipts, "peer": peer_receipt})
         finally:
             if faults:
@@ -279,6 +348,7 @@ dir="{directory}/logs"
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--server-source", type=Path, required=True)
+    parser.add_argument("--distribution", choices=["source", "registry"], default="source")
     parser.add_argument("--seconds", type=int, choices=[30, 120, 600], default=120)
     parser.add_argument("--output", type=Path, default=SDK / ".acceptance/receipt.json")
     args = parser.parse_args()

@@ -220,3 +220,18 @@ OpenSSL. The default CI run lasts 120 seconds of WSS messaging; a manual
 interruptions and cleanup. This bounded recovery check is not a capacity or
 multi-day soak claim. Five separate TLS tests cover trusted roots, unknown CA,
 wrong hostname, expired certificates and invalid configuration.
+
+
+## Published package acceptance
+
+The real-server harness can build its probes as an independent consumer of
+`wukong-easy-sdk = "=0.1.0"`. Registry mode starts with an empty Cargo cache,
+verifies the public archive checksum and source identity, and uses no SDK path
+or Git dependency. Both modes retain separate receipts in CI.
+
+```sh
+python3 tests/acceptance/run.py --server-source test-server --distribution registry --seconds 120 --output .acceptance/registry.json
+```
+
+The server checkout must be the documented pinned revision. A registry receipt
+names the released package source separately from the harness revision.

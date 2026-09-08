@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Verify the published 0.1.0 crate with an empty-cache consumer, exact archive/source identity, real-server Rust/JS WSS messaging and three transport cuts; retain registry and source receipts separately.
+
 ## 0.1.0 — 2026-09-08
 
 - Keep package paths anchored to exclude nested third-party assets; bind acceptance receipts to unchanged SDK revisions.

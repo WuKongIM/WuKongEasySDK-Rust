@@ -13,6 +13,10 @@ permissions:
   contents: read
 jobs:
   interoperability:
+    strategy:
+      fail-fast: false
+      matrix:
+        distribution: [source, registry]
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -38,12 +42,13 @@ jobs:
         run: cargo test --locked
       - name: Verify WSS messaging, three interruptions and cleanup
         env:
+          TEST_DISTRIBUTION: ${{ matrix.distribution }}
           TEST_SECONDS: ${{ inputs.seconds || '120' }}
-        run: python3 tests/acceptance/run.py --server-source test-server --seconds "$TEST_SECONDS"
+        run: python3 tests/acceptance/run.py --server-source test-server --distribution "$TEST_DISTRIBUTION" --seconds "$TEST_SECONDS"
       - name: Retain successful acceptance receipt
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: rust-sdk-acceptance-${{ github.sha }}
+          name: rust-sdk-acceptance-${{ matrix.distribution }}-${{ github.sha }}
           path: .acceptance/receipt.json
           if-no-files-found: error
           retention-days: 30

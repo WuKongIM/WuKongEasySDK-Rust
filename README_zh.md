@@ -121,3 +121,17 @@ python3 tests/acceptance/run.py --server-source test-server --seconds 120
 测试使用临时 CA、合成身份、回环监听，并清理自己启动的进程。
 成功回执 `.acceptance/receipt.json` 记录精确源码、消息数量、断网恢复与清理；
 该有限时长验收不代表容量或多日稳定性结论。
+
+
+## 正式发布包验收
+
+真实服务端验收工具可以作为 `wukong-easy-sdk = "=0.1.0"` 的独立消费者构建探针。
+Registry 模式从空 Cargo 缓存开始，核对下载包的 SHA-256 和源码身份，不使用本地
+路径或 Git SDK 依赖。CI 分别保存源码模式与正式包模式的回执。
+
+```sh
+python3 tests/acceptance/run.py --server-source test-server --distribution registry --seconds 120 --output .acceptance/registry.json
+```
+
+服务端必须检出文档指定的精确 revision。正式包回执分别记录发布包源码与验收工具源码，
+避免把新工具的 commit 当成已发布包的版本。
