@@ -22,6 +22,7 @@ import time
 import urllib.request
 
 from group import run_group
+from network import run_network
 
 SERVER_REVISION = "27a39f15bf163b433f417b78ab6bfc6e589585e5"
 SDK = Path(__file__).resolve().parents[2]
@@ -59,7 +60,7 @@ uuid = {{ version = "1", features = ["v4"] }}
 tokio = {{ version = "1", features = ["full"] }}
 ''')
     probe_checksums = {}
-    for name in ("roundtrip", "auth_check", "acceptance", "group_acceptance"):
+    for name in ("roundtrip", "auth_check", "acceptance", "group_acceptance", "network_acceptance"):
         source = SDK / "examples" / f"{name}.rs"
         shutil.copyfile(source, examples / source.name)
         probe_checksums[source.name] = hashlib.sha256(source.read_bytes()).hexdigest()
@@ -142,12 +143,13 @@ class Proxy:
             remote, other = await asyncio.open_connection("127.0.0.1", self.upstream)
             self.writers.add(other)
 
-            async def pump(source, target):
+            async def pump(source, target, direction):
                 while data := await source.read(65536):
+                    await self.before_forward(direction)
                     target.write(data)
                     await target.drain()
 
-            pumps = [asyncio.create_task(pump(reader, other)), asyncio.create_task(pump(remote, writer))]
+            pumps = [asyncio.create_task(pump(reader, other, "upstream")), asyncio.create_task(pump(remote, writer, "downstream"))]
             await asyncio.wait(pumps, return_when=asyncio.FIRST_COMPLETED)
         except (OSError, ConnectionError):
             pass
@@ -161,6 +163,9 @@ class Proxy:
                     self.writers.discard(stream)
             self.tasks.discard(current)
 
+    async def before_forward(self, direction):
+        """Extension point for bounded test-only directional delay and blackholes."""
+
     async def cut(self, index, total=3):
         self.paused = True
         active = len(self.writers)
@@ -171,7 +176,8 @@ class Proxy:
         self.cut_receipts.append({"index": index, "active_streams": active, "outage_seconds": 1})
         if active < 2:
             raise RuntimeError("fault injection found no active connection")
-        print(f"Network interruption {index}/{total} completed", flush=True)
+        label = f"{index}/{total}" if total is not None else str(index)
+        print(f"Network interruption {label} completed", flush=True)
 
     async def close(self):
         for writer in list(self.writers):
@@ -320,6 +326,7 @@ dir="{directory}/logs"
                 raise RuntimeError("JS peer failed or did not confirm replies")
             group_receipt = await asyncio.wait_for(run_group(executables / "group_acceptance", api, ws, tls, der, env, Proxy, stop), timeout=180)
             receipt["group"] = group_receipt
+            receipt["network"] = await asyncio.wait_for(run_network(executables / "network_acceptance", api, ws, tls, der, env, Proxy, stop, args.network_seconds), timeout=args.network_seconds + 180)
             if sdk_revision != command(["git", "rev-parse", "HEAD"], cwd=SDK).stdout.strip() or sdk_status != command(["git", "status", "--porcelain", "--untracked-files=all"], cwd=SDK).stdout:
                 raise RuntimeError("SDK source changed during acceptance")
             receipt.update(distribution)
@@ -357,6 +364,7 @@ def main():
     parser.add_argument("--server-source", type=Path, required=True)
     parser.add_argument("--distribution", choices=["source", "registry"], default="source")
     parser.add_argument("--seconds", type=int, choices=[30, 120, 600], default=120)
+    parser.add_argument("--network-seconds", type=int, choices=[30, 1800], default=30)
     parser.add_argument("--output", type=Path, default=SDK / ".acceptance/receipt.json")
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="wukong-easy-sdk-") as directory:

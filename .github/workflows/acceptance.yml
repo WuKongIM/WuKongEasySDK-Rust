@@ -9,6 +9,11 @@ on:
         type: choice
         options: ['120', '600']
         default: '600'
+      network_seconds:
+        description: Weak-network and resource validation duration
+        type: choice
+        options: ['30', '1800']
+        default: '30'
 permissions:
   contents: read
 jobs:
@@ -18,7 +23,7 @@ jobs:
       matrix:
         distribution: [source, registry]
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -40,11 +45,12 @@ jobs:
         run: rustup toolchain install 1.86.0 --profile minimal && rustup default 1.86.0
       - name: Verify TLS and protocol contracts
         run: cargo test --locked
-      - name: Verify WSS messaging, three interruptions and cleanup
+      - name: Verify WSS messaging, group permissions, weak network and cleanup
         env:
           TEST_DISTRIBUTION: ${{ matrix.distribution }}
           TEST_SECONDS: ${{ inputs.seconds || '120' }}
-        run: python3 tests/acceptance/run.py --server-source test-server --distribution "$TEST_DISTRIBUTION" --seconds "$TEST_SECONDS"
+          NETWORK_SECONDS: ${{ inputs.network_seconds || '30' }}
+        run: python3 tests/acceptance/run.py --server-source test-server --distribution "$TEST_DISTRIBUTION" --seconds "$TEST_SECONDS" --network-seconds "$NETWORK_SECONDS"
       - name: Retain successful acceptance receipt
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
