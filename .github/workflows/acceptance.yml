@@ -43,6 +43,8 @@ jobs:
           node-version: '22.12.0'
       - name: Install Rust
         run: rustup toolchain install 1.86.0 --profile minimal && rustup default 1.86.0
+      - name: Verify bounded wire audit parser
+        run: python3 -m unittest discover -s tests/acceptance -p "test_*.py"
       - name: Verify TLS and protocol contracts
         run: cargo test --locked
       - name: Verify WSS messaging, group permissions, weak network and cleanup

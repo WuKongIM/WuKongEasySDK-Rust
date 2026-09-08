@@ -143,9 +143,13 @@ class Proxy:
             remote, other = await asyncio.open_connection("127.0.0.1", self.upstream)
             self.writers.add(other)
 
+            observer = self.wire_observer()
+
             async def pump(source, target, direction):
                 while data := await source.read(65536):
                     await self.before_forward(direction)
+                    if observer is not None and direction == "upstream":
+                        observer.feed(data)
                     target.write(data)
                     await target.drain()
 
@@ -162,6 +166,10 @@ class Proxy:
                     stream.close()
                     self.writers.discard(stream)
             self.tasks.discard(current)
+
+    def wire_observer(self):
+        """Optionally audit this connection without retaining message contents."""
+        return None
 
     async def before_forward(self, direction):
         """Extension point for bounded test-only directional delay and blackholes."""

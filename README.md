@@ -274,7 +274,10 @@ supports Linux and macOS and samples the Rust probe's RSS and numeric file
 descriptors after each cycle. After three warmup cycles, fixed allowances are
 64 MiB RSS and eight descriptors above baseline; proxy streams/tasks must be
 zero. The `network` receipt retains every cycle, fault/recovery timing, resource
-sample and cleanup result. Probe settings (800 ms SEND timeout, 3 s pong timeout,
+sample and cleanup result. A bounded proxy-side WebSocket audit requires exactly
+58 outbound SEND requests per cycle, matching 58 verified deliveries; server
+deduplication therefore cannot hide an extra retransmission. The audit retains
+counts only and fails on unsupported framing. Probe settings (800 ms SEND timeout, 3 s pong timeout,
 2 pending SENDs, 16 events) are distinct from SDK defaults. The replay observation
 window is 150 ms per quiet check, with later phases also rejecting old payloads.
 These conservative finite checks do not prove production capacity, multi-day

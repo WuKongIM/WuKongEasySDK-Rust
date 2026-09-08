@@ -7,6 +7,8 @@ import sys
 import time
 import urllib.request
 
+from wire import SendCounter
+
 
 def process_sample(pid):
     """Observe the probe, not the server or Python harness; never inspect payloads."""
@@ -24,7 +26,29 @@ def process_sample(pid):
 
 
 async def run_network(executable, api, ws, tls, der, env, proxy_factory, stop, seconds):
-    class FaultProxy(proxy_factory):
+    class AuditedProxy(proxy_factory):
+        def __init__(self, upstream):
+            super().__init__(upstream)
+            self.sends = 0
+            self.audit_error = None
+
+        def count_send(self):
+            self.sends += 1
+
+        def wire_observer(self):
+            owner = self
+
+            class Observer(SendCounter):
+                def feed(self, data):
+                    try:
+                        super().feed(data)
+                    except (ValueError, UnicodeError):
+                        owner.audit_error = "unsupported or malformed probe wire frame"
+                        raise
+
+            return Observer(self.count_send)
+
+    class FaultProxy(AuditedProxy):
         def __init__(self, upstream):
             super().__init__(upstream)
             self.gates = {name: asyncio.Event() for name in ("upstream", "downstream")}
@@ -44,7 +68,7 @@ async def run_network(executable, api, ws, tls, der, env, proxy_factory, stop, s
                 self.delayed_chunks += 1
                 await asyncio.sleep(duration)
 
-    fault, healthy = FaultProxy(ws), proxy_factory(ws)
+    fault, healthy = FaultProxy(ws), AuditedProxy(ws)
     listeners = []
     process = None
     samples = []
@@ -96,6 +120,7 @@ async def run_network(executable, api, ws, tls, der, env, proxy_factory, stop, s
         # growth baseline. Short CI executes at least four cycles, including a post-warmup sample.
         while time.monotonic() - started < seconds or len(cycles) < 4:
             index = len(cycles) + 1
+            sends_before = fault.sends + healthy.sends
             await control("new")
             await control("exchange")
             fault.delay = True
@@ -136,13 +161,16 @@ async def run_network(executable, api, ws, tls, der, env, proxy_factory, stop, s
             if destroyed["details"].get("clients_destroyed") != 2 or destroyed["details"].get("deliveries") != 58:
                 raise RuntimeError("cycle delivery or destruction totals mismatch")
             await disconnected_proxies()
+            wire_sends = fault.sends + healthy.sends - sends_before
+            if fault.audit_error or healthy.audit_error or wire_sends != 58:
+                raise RuntimeError("wire SEND audit detected unsupported framing, an extra send or replay")
             sample = await asyncio.to_thread(process_sample, process.pid)
             sample.update({"cycle": index, "elapsed_seconds": round(time.monotonic() - started, 3),
                            "active_proxy_streams": 0, "active_proxy_tasks": 0})
             samples.append(sample)
             cycle = {"cycle": index, "fault": fault_kind, "fault_to_recovered_ms": fault_to_recovered_ms,
                      "reconnect_wait_ms": recovered["elapsed_ms"], "delayed_exchange_ms": delayed["elapsed_ms"],
-                     "timeouts": 2, "backpressure": 1, "lagged_events": lagged["details"]["lagged"], "deliveries": 58}
+                     "timeouts": 2, "backpressure": 1, "lagged_events": lagged["details"]["lagged"], "deliveries": 58, "wire_sends": wire_sends}
             cycles.append(cycle)
             if len(samples) > 3:
                 baseline = samples[2]
@@ -155,7 +183,7 @@ async def run_network(executable, api, ws, tls, der, env, proxy_factory, stop, s
             raise RuntimeError("network probe did not exit cleanly")
         return {"status": "pass", "requested_seconds": seconds, "elapsed_seconds": round(time.monotonic() - started, 3),
                 "cycles": cycles, "samples": samples, "clients_destroyed": 2 * len(cycles),
-                "deliveries": 58 * len(cycles), "unknown_outcomes": 2 * len(cycles),
+                "deliveries": 58 * len(cycles), "wire_sends": fault.sends + healthy.sends, "unknown_outcomes": 2 * len(cycles),
                 "delayed_chunks": fault.delayed_chunks, "blocked_chunks": fault.blocked_chunks,
                 "delay_per_chunk_ms": [20, 40, 60], "replay_observation_ms": 150,
                 "request_timeout_ms": 800, "pong_timeout_ms": 3000, "max_in_flight": 2, "event_capacity": 16,
