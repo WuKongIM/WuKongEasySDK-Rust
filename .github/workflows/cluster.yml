@@ -1,0 +1,52 @@
+name: Three-node cluster acceptance
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Three-node messaging workload duration (includes midpoint recovery)
+        type: choice
+        options: ['60', '600']
+        default: '600'
+permissions:
+  contents: read
+jobs:
+  cluster:
+    strategy:
+      fail-fast: false
+      matrix:
+        distribution: [source, registry]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: WuKongIM/WuKongIM
+          ref: f041174a042b4a96179218571e06c04bb64cf1ca
+          path: test-server
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.25.11'
+          cache-dependency-path: test-server/go.sum
+      - name: Install Rust
+        run: rustup toolchain install 1.86.0 --profile minimal && rustup default 1.86.0
+      - name: Verify wire audit parser
+        run: python3 -m unittest discover -s tests/acceptance -p "test_*.py"
+      - name: Verify cross-node messaging, permissions and ingress crash recovery
+        env:
+          TEST_DISTRIBUTION: ${{ matrix.distribution }}
+          TEST_SECONDS: ${{ inputs.seconds || '60' }}
+        run: python3 tests/acceptance/cluster.py --server-source test-server --distribution "$TEST_DISTRIBUTION" --seconds "$TEST_SECONDS"
+      - name: Retain bounded cluster receipt and failure diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rust-sdk-cluster-${{ matrix.distribution }}-${{ github.sha }}
+          path: .acceptance/cluster.json
+          if-no-files-found: error
+          retention-days: 30

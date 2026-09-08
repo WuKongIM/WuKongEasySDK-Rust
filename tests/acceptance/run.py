@@ -60,7 +60,7 @@ uuid = {{ version = "1", features = ["v4"] }}
 tokio = {{ version = "1", features = ["full"] }}
 ''')
     probe_checksums = {}
-    for name in ("roundtrip", "auth_check", "acceptance", "group_acceptance", "network_acceptance"):
+    for name in ("roundtrip", "auth_check", "acceptance", "group_acceptance", "network_acceptance", "cluster_acceptance"):
         source = SDK / "examples" / f"{name}.rs"
         shutil.copyfile(source, examples / source.name)
         probe_checksums[source.name] = hashlib.sha256(source.read_bytes()).hexdigest()
@@ -158,14 +158,18 @@ class Proxy:
         except (OSError, ConnectionError):
             pass
         finally:
-            for task in pumps:
-                task.cancel()
-            await asyncio.gather(*pumps, return_exceptions=True)
-            for stream in [writer, other]:
-                if stream:
-                    stream.close()
-                    self.writers.discard(stream)
-            self.tasks.discard(current)
+            try:
+                for task in pumps:
+                    task.cancel()
+                await asyncio.gather(*pumps, return_exceptions=True)
+            finally:
+                # Closing the harness may cancel this handler again while its
+                # pumps drain. Stream ownership must still be released.
+                for stream in [writer, other]:
+                    if stream:
+                        stream.close()
+                        self.writers.discard(stream)
+                self.tasks.discard(current)
 
     def wire_observer(self):
         """Optionally audit this connection without retaining message contents."""
