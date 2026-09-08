@@ -123,16 +123,15 @@ python3 tests/acceptance/run.py --server-source test-server --seconds 120
 该有限时长验收不代表容量或多日稳定性结论。
 
 
-## Published package acceptance
+## 正式发布包验收
 
-The real-server harness can build its probes as an independent consumer of
-`wukong-easy-sdk = "=0.1.0"`. Registry mode starts with an empty Cargo cache,
-verifies the public archive checksum and source identity, and uses no SDK path
-or Git dependency. Both modes retain separate receipts in CI.
+真实服务端验收工具可以作为 `wukong-easy-sdk = "=0.1.0"` 的独立消费者构建探针。
+Registry 模式从空 Cargo 缓存开始，核对下载包的 SHA-256 和源码身份，不使用本地
+路径或 Git SDK 依赖。CI 分别保存源码模式与正式包模式的回执。
 
 ```sh
 python3 tests/acceptance/run.py --server-source test-server --distribution registry --seconds 120 --output .acceptance/registry.json
 ```
 
-The server checkout must be the documented pinned revision. A registry receipt
-names the released package source separately from the harness revision.
+服务端必须检出文档指定的精确 revision。正式包回执分别记录发布包源码与验收工具源码，
+避免把新工具的 commit 当成已发布包的版本。
