@@ -8,11 +8,11 @@
 
 ## 安装
 
-当前源码版本为 `0.1.0`，通过 Git 分发，**尚未发布到 crates.io**。将 `rev` 换成已审核的完整提交 SHA，并提交 Cargo.lock：
+从 crates.io 安装精确版本 `0.1.0`，并提交 Cargo.lock：
 
 ```toml
 [dependencies]
-wukong-easy-sdk = { git = "https://github.com/WuKongIM/WuKongEasySDK-Rust.git", rev = "<完整提交SHA>" }
+wukong-easy-sdk = "=0.1.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 serde_json = "1"
 ```

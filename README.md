@@ -16,12 +16,11 @@ at most 16 certificates of 64 KiB each and does not accept private keys.
 
 ## Install
 
-This initial `0.1.0` implementation is distributed from Git. It has **not** been
-published to crates.io. Pin the reviewed full commit and commit Cargo.lock:
+Install the exact initial release from crates.io and commit Cargo.lock:
 
 ```toml
 [dependencies]
-wukong-easy-sdk = { git = "https://github.com/WuKongIM/WuKongEasySDK-Rust.git", rev = "<full-reviewed-commit>" }
+wukong-easy-sdk = "=0.1.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 serde_json = "1"
 ```

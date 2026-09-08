@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0 — 2026-09-08
+
 - Keep package paths anchored to exclude nested third-party assets; bind acceptance receipts to unchanged SDK revisions.
 
 - Add optional private DER root certificates while retaining hostname and expiry verification.
@@ -13,4 +15,4 @@
 - Add typed asynchronous API, shared client lifecycle, bounded requests/events,
   payload/field compatibility and safe errors with no automatic logs.
 - Add bilingual guides, terminal examples and repeatable JS interoperability smoke.
-- Source distribution only; no crates.io release has been published.
+- Publish the initial `wukong-easy-sdk` crate with Rust 1.86+ support.
