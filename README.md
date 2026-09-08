@@ -235,3 +235,18 @@ python3 tests/acceptance/run.py --server-source test-server --distribution regis
 
 The server checkout must be the documented pinned revision. A registry receipt
 names the released package source separately from the harness revision.
+
+
+### Group membership and permissions acceptance
+
+Both source and registry runs also connect four Rust identities over verified
+WSS to two groups. The trusted harness creates the groups and changes membership
+through Product HTTP; the SDK clients only use the message gateway. Ten phases
+check member fanout, group isolation, outsider rejection (reason 3), add/remove/
+re-add, denylist rejection (reason 4) and removal, and membership after all four
+clients automatically reconnect from a transport cut. Each delivered message
+must match its SENDACK ID/sequence, sender, channel and Unicode payload, without
+duplicates or observer lag. Excluded clients are observed for at least 500 ms
+per phase. The nested `group` receipt records every phase and client cleanup.
+This four-client check does not establish large-group capacity, offline catch-up
+or cross-node routing behavior.
