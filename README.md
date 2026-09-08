@@ -292,12 +292,12 @@ RUSTUP_TOOLCHAIN=1.86.0 python3 tests/acceptance/cluster.py \
   --server-source ../test-server --distribution registry --seconds 600
 ```
 
-This harness pins server `7ee20aed390aa7aef9d630b2a3566f5aca24e061`, which includes
-[the cross-node group membership cache fix](https://github.com/WuKongIM/WuKongIM/pull/922).
+This harness pins server `f041174a042b4a96179218571e06c04bb64cf1ca`, which includes
+[the cross-node group membership cache fix](https://github.com/WuKongIM/WuKongIM/pull/920).
 The older single-node server pin does not establish correct cross-node member
 removal: the three-node probe reproduced a removed member receiving a new group
-message even after a five-second wait. The fix reuses authoritative permission
-reads and carries membership versions into delivery snapshots; SDK 0.1.0 is unchanged.
+message even after a five-second wait. The merged server fix refreshes mutable metadata at the Slot authority and uses
+bounded authoritative subscriber pages; SDK 0.1.0 is unchanged.
 
 Three isolated local server processes use 256 hash slots, 12 logical slots and
 three Slot replicas. Four Rust clients authenticate through verified private-CA

@@ -180,11 +180,11 @@ RUSTUP_TOOLCHAIN=1.86.0 python3 tests/acceptance/cluster.py \
   --server-source ../test-server --distribution registry --seconds 600
 ```
 
-脚本固定服务端 `7ee20aed390aa7aef9d630b2a3566f5aca24e061`，包含
-[跨节点群成员缓存修复](https://github.com/WuKongIM/WuKongIM/pull/922)。
+脚本固定服务端 `f041174a042b4a96179218571e06c04bb64cf1ca`，包含
+[跨节点群成员缓存修复](https://github.com/WuKongIM/WuKongIM/pull/920)。
 原先的单节点集群验收不能证明跨节点移除成员正确：新场景复现了移除成员后等待
-5 秒，该成员仍收到新群消息。服务端修复复用权威鉴权读取，将成员版本传递到
-投递快照；Rust SDK 0.1.0 不变。
+5 秒，该成员仍收到新群消息。已合并的服务端修复从 Slot 权威刷新可变元数据，并使用
+有界的权威订阅者分页；Rust SDK 0.1.0 不变。
 
 三个隔离的本机进程配置 256 个 Hash Slot、12 个逻辑 Slot 和三个 Slot 副本。
 四个 Rust 客户端通过私有 CA 验证的 WSS 接入节点 `1、2、3、2`。

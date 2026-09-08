@@ -19,7 +19,7 @@ from run import (SDK, Proxy, available_ports, certificates,
                  command, registry_consumer, stop)
 from wire import SendCounter
 
-SERVER_REVISION = "7ee20aed390aa7aef9d630b2a3566f5aca24e061"
+SERVER_REVISION = "f041174a042b4a96179218571e06c04bb64cf1ca"
 
 USERS = ["group-alice", "group-bob", "group-carol", "group-dave"]
 MAIN = "rust-cluster-main"

@@ -158,14 +158,18 @@ class Proxy:
         except (OSError, ConnectionError):
             pass
         finally:
-            for task in pumps:
-                task.cancel()
-            await asyncio.gather(*pumps, return_exceptions=True)
-            for stream in [writer, other]:
-                if stream:
-                    stream.close()
-                    self.writers.discard(stream)
-            self.tasks.discard(current)
+            try:
+                for task in pumps:
+                    task.cancel()
+                await asyncio.gather(*pumps, return_exceptions=True)
+            finally:
+                # Closing the harness may cancel this handler again while its
+                # pumps drain. Stream ownership must still be released.
+                for stream in [writer, other]:
+                    if stream:
+                        stream.close()
+                        self.writers.discard(stream)
+                self.tasks.discard(current)
 
     def wire_observer(self):
         """Optionally audit this connection without retaining message contents."""
