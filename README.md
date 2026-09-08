@@ -250,3 +250,35 @@ duplicates or observer lag. Excluded clients are observed for at least 500 ms
 per phase. The nested `group` receipt records every phase and client cleanup.
 This four-client check does not establish large-group capacity, offline catch-up
 or cross-node routing behavior.
+
+
+### Weak-network and resource acceptance
+
+Every source/registry run also repeats two-client WSS lifecycles for at least
+30 seconds and four cycles. It injects deterministic 20/40/60 ms per-chunk delay,
+pauses return traffic to prove peer delivery despite SEND timeout, verifies
+`Backpressure` at two pending requests and admission recovery, and requires
+`Lagged` for a deliberately slow 16-event observer while an active observer
+checks all deliveries. Alternating blackholes and transport aborts must recover
+automatically, with no old SEND observed replaying. Each cycle destroys both
+clients and requires both proxies to drain all streams/tasks.
+
+```sh
+python3 tests/acceptance/run.py --server-source test-server --distribution registry --seconds 120 --network-seconds 1800 --output .acceptance/network-1800s.json
+```
+
+The explicit long mode runs the weak-network loop for at least 30 minutes,
+plus build time and the existing person/group checks. The manual Workflow input
+`network_seconds=1800` selects it; ordinary CI stays short. Resource measurement
+supports Linux and macOS and samples the Rust probe's RSS and numeric file
+descriptors after each cycle. After three warmup cycles, fixed allowances are
+64 MiB RSS and eight descriptors above baseline; proxy streams/tasks must be
+zero. The `network` receipt retains every cycle, fault/recovery timing, resource
+sample and cleanup result. A bounded proxy-side WebSocket audit requires exactly
+58 outbound SEND requests per cycle, matching 58 verified deliveries; server
+deduplication therefore cannot hide an extra retransmission. The audit retains
+counts only and fails on unsupported framing. Probe settings (800 ms SEND timeout, 3 s pong timeout,
+2 pending SENDs, 16 events) are distinct from SDK defaults. The replay observation
+window is 150 ms per quiet check, with later phases also rejecting old payloads.
+These conservative finite checks do not prove production capacity, multi-day
+stability, every network failure mode or absence of every resource leak.

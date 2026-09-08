@@ -146,3 +146,27 @@ python3 tests/acceptance/run.py --server-source test-server --distribution regis
 每条接收消息必须匹配 SENDACK 的 ID/序号、发送人、群及 Unicode 正文，并拒绝重复或事件丢失。
 每个场景至少观察 500 ms，检查被排除身份未收到消息。回执的 `group` 字段记录各场景及客户端清理。
 这项四客户端验证不证明大群容量、离线补偿或跨节点路由行为。
+
+
+### 弱网与资源边界验收
+
+源码和 registry 模式还会反复执行两个客户端的 WSS 生命周期，至少运行 30 秒和四轮。
+每轮注入数据块级 20/40/60 ms 延迟，暂停返回流量，确认接收方已收到但 SEND 超时的
+结果未知语义；在两个待完成请求时验证 `Backpressure` 和后续准入恢复，并验证慢监听器
+明确返回 `Lagged`，同时正常监听器核对所有投递。双向黑洞与连接中断交替发生，要求
+自动恢复且未观察到旧 SEND 重发。每轮销毁两个客户端，代理连接流和任务必须归零。
+
+```sh
+python3 tests/acceptance/run.py --server-source test-server --distribution registry --seconds 120 --network-seconds 1800 --output .acceptance/network-1800s.json
+```
+
+该长程模式的弱网循环本身至少运行 30 分钟，构建及已有单聊/群聊检查另计。
+工作流手动输入 `network_seconds=1800` 可选择长程模式，普通 CI 保留短程。
+资源观测支持 Linux、macOS，每轮结束采样 Rust 探针的 RSS 和数字文件描述符数；
+前三轮预热后，固定允许相对基线增加 64 MiB RSS 和八个描述符，代理连接流/任务必须为零。
+回执的 `network` 字段保存每轮故障、恢复耗时、资源采样及清理结果。
+代理侧有界 WebSocket 审计要求每轮恰好 58 个出站 SEND，与 58 次已核对投递匹配，
+避免服务端去重掩盖额外重发；仅保留计数，不支持的帧格式直接使验收失败。
+探针使用 800 ms SEND 超时、3 秒 pong 超时、两个待完成请求和 16 个事件容量，
+与 SDK 默认参数不同。每次静默检查观察 150 ms，后续场景也拒绝旧消息正文。
+这些保守的有限检查不证明生产容量、多日稳定性、所有网络故障或不存在任何资源泄漏。

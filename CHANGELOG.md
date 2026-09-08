@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Verify weak-network SEND ambiguity, admission backpressure, slow-observer lag and repeated client cleanup with public-package resource samples; add an explicit 30-minute acceptance mode.
+
 - Add real-server group acceptance for the source and exact released crate: member fanout, isolation, membership changes, explicit permission rejection and four-client WSS reconnect.
 
 - Verify the published 0.1.0 crate with an empty-cache consumer, exact archive/source identity, real-server Rust/JS WSS messaging and three transport cuts; retain registry and source receipts separately.
