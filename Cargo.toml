@@ -9,7 +9,7 @@ repository = "https://github.com/WuKongIM/WuKongEasySDK-Rust"
 readme = "README.md"
 keywords = ["wukongim", "im", "websocket", "sdk", "async"]
 categories = ["network-programming", "asynchronous"]
-include = ["src/**", "examples/**", "tests/*.rs", "tests/interop.mjs", "Cargo.toml", "Cargo.lock", "README*", "LICENSE", "CHANGELOG.md", "docs/**"]
+include = ["/src/**", "/examples/**", "/tests/*.rs", "/tests/interop.mjs", "/Cargo.toml", "/Cargo.lock", "/README*", "/LICENSE", "/CHANGELOG.md", "/docs/**"]
 
 [dependencies]
 base64 = "0.22.1"

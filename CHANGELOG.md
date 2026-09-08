@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep package paths anchored to exclude nested third-party assets; bind acceptance receipts to unchanged SDK revisions.
+
 - Add optional private DER root certificates while retaining hostname and expiry verification.
 - Add WSS certificate tests and reproducible Rust/JS real-server acceptance with three transport interruptions and bounded sustained messaging.
 

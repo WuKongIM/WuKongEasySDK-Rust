@@ -129,6 +129,8 @@ async def stop(process):
 
 
 async def run(args, directory):
+    sdk_revision = command(["git", "rev-parse", "HEAD"], cwd=SDK).stdout.strip()
+    sdk_status = command(["git", "status", "--porcelain", "--untracked-files=no"], cwd=SDK).stdout
     source = args.server_source.resolve()
     revision = command(["git", "rev-parse", "HEAD"], cwd=source).stdout.strip()
     if revision != SERVER_REVISION:
@@ -246,7 +248,9 @@ dir="{directory}/logs"
             peer_receipt = json.loads(peer_output)
             if peer.returncode or peer_receipt.get("status") != "pass" or peer_receipt["replies"] < receipt["completed"]:
                 raise RuntimeError("JS peer failed or did not confirm replies")
-            receipt.update({"server_revision": revision, "sdk_revision": command(["git", "rev-parse", "HEAD"], cwd=SDK).stdout.strip(), "sdk_tree_clean": not command(["git", "status", "--porcelain", "--untracked-files=no"], cwd=SDK).stdout.strip(), "js_package": "easyjssdk@2.0.4", "topology": "single-node cluster", "hash_slots": 256, "token_auth_on": True, "incorrect_token": "rejected", "transport": "WSS with verified private CA and hostname", "rust_rust": "pass", "network_cuts": proxy.cut_receipts, "peer": peer_receipt})
+            if sdk_revision != command(["git", "rev-parse", "HEAD"], cwd=SDK).stdout.strip() or sdk_status != command(["git", "status", "--porcelain", "--untracked-files=no"], cwd=SDK).stdout:
+                raise RuntimeError("SDK source changed during acceptance")
+            receipt.update({"server_revision": revision, "sdk_revision": sdk_revision, "sdk_tree_clean": not sdk_status.strip(), "js_package": "easyjssdk@2.0.4", "topology": "single-node cluster", "hash_slots": 256, "token_auth_on": True, "incorrect_token": "rejected", "transport": "WSS with verified private CA and hostname", "rust_rust": "pass", "network_cuts": proxy.cut_receipts, "peer": peer_receipt})
         finally:
             if faults:
                 faults.cancel()
