@@ -282,3 +282,51 @@ counts only and fails on unsupported framing. Probe settings (800 ms SEND timeou
 window is 150 ms per quiet check, with later phases also rejecting old payloads.
 These conservative finite checks do not prove production capacity, multi-day
 stability, every network failure mode or absence of every resource leak.
+
+### Three-node cluster acceptance
+
+Run the independent public-package probe against the exact clean server checkout:
+
+```bash
+RUSTUP_TOOLCHAIN=1.86.0 python3 tests/acceptance/cluster.py \
+  --server-source ../test-server --distribution registry --seconds 600
+```
+
+This harness pins server `7ee20aed390aa7aef9d630b2a3566f5aca24e061`, which includes
+[the cross-node group membership cache fix](https://github.com/WuKongIM/WuKongIM/pull/922).
+The older single-node server pin does not establish correct cross-node member
+removal: the three-node probe reproduced a removed member receiving a new group
+message even after a five-second wait. The fix reuses authoritative permission
+reads and carries membership versions into delivery snapshots; SDK 0.1.0 is unchanged.
+
+Three isolated local server processes use 256 hash slots, 12 logical slots and
+three Slot replicas. Four Rust clients authenticate through verified private-CA
+WSS on nodes `1, 2, 3, 2`. The probe verifies all six directed person paths between
+the first three clients, group fanout/isolation, nonmember and denylist rejection,
+member removal/re-add, and permissions after ingress node 1 is killed and restarted
+with the same address/data. A withheld SENDACK produces `Timeout` while its peer
+receives the message. Independent wire SEND counts must equal all application
+attempts, including rejected and uncertain sends, before and after reconnection.
+No application retry is performed and server deduplication cannot hide replay.
+
+CONNECT recovery is separate from route recovery. Exploratory immediate sends
+observed SENDACK without delivery while recipients were absent from the online
+route view after Slot authority changes. The acceptance therefore requires all
+four users online through every API ingress for two 25-second heartbeat intervals
+before asserting steady-state delivery. This 50-second observation is bounded by
+a 100-second gate; receipts separate socket reconnection from gate completion.
+SENDACK still means server acceptance, not recipient delivery.
+
+[Dedicated CI](.github/workflows/cluster.yml) runs a 60-second workload for source
+and exact registry distributions; manual runs select 600 seconds. The initial
+fault/permission suite precedes that workload; a second crash and recovery gate
+occur at its midpoint. Timed loops include recovery and finish the current phase,
+so a short run can exceed 60 seconds. Every successful run requires client
+shutdown, an empty online-status response and zero owned processes/proxy streams/
+tasks. Failed receipts retain bounded routing/delivery diagnostics. Test timers:
+SEND 3 s, connect 2 s, PONG 10 s, heartbeat 25 s, 100 retries with 100–500 ms backoff.
+These differ from SDK defaults. Exclusions are observed for at least 500 ms per phase.
+
+This finite test does not establish alternate-address failover, uninterrupted
+availability during failures, selected Channel leader transfer, network partition
+recovery, offline catch-up, large-group capacity or multi-day stability.

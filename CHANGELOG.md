@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add released-package three-node WSS acceptance for cross-node person/group delivery, membership permissions, uncertain SENDs and same-endpoint ingress crash recovery; distinguish socket recovery from volatile presence route recovery.
+
 - Verify weak-network SEND ambiguity, admission backpressure, slow-observer lag and repeated client cleanup with public-package resource samples; add an explicit 30-minute acceptance mode.
 
 - Add real-server group acceptance for the source and exact released crate: member fanout, isolation, membership changes, explicit permission rejection and four-client WSS reconnect.

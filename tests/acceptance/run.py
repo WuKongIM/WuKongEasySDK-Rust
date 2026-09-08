@@ -60,7 +60,7 @@ uuid = {{ version = "1", features = ["v4"] }}
 tokio = {{ version = "1", features = ["full"] }}
 ''')
     probe_checksums = {}
-    for name in ("roundtrip", "auth_check", "acceptance", "group_acceptance", "network_acceptance"):
+    for name in ("roundtrip", "auth_check", "acceptance", "group_acceptance", "network_acceptance", "cluster_acceptance"):
         source = SDK / "examples" / f"{name}.rs"
         shutil.copyfile(source, examples / source.name)
         probe_checksums[source.name] = hashlib.sha256(source.read_bytes()).hexdigest()
