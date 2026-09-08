@@ -21,6 +21,8 @@ import tempfile
 import time
 import urllib.request
 
+from group import run_group
+
 SERVER_REVISION = "27a39f15bf163b433f417b78ab6bfc6e589585e5"
 SDK = Path(__file__).resolve().parents[2]
 
@@ -57,7 +59,7 @@ uuid = {{ version = "1", features = ["v4"] }}
 tokio = {{ version = "1", features = ["full"] }}
 ''')
     probe_checksums = {}
-    for name in ("roundtrip", "auth_check", "acceptance"):
+    for name in ("roundtrip", "auth_check", "acceptance", "group_acceptance"):
         source = SDK / "examples" / f"{name}.rs"
         shutil.copyfile(source, examples / source.name)
         probe_checksums[source.name] = hashlib.sha256(source.read_bytes()).hexdigest()
@@ -159,7 +161,7 @@ class Proxy:
                     self.writers.discard(stream)
             self.tasks.discard(current)
 
-    async def cut(self, index):
+    async def cut(self, index, total=3):
         self.paused = True
         active = len(self.writers)
         for writer in list(self.writers):
@@ -169,7 +171,7 @@ class Proxy:
         self.cut_receipts.append({"index": index, "active_streams": active, "outage_seconds": 1})
         if active < 2:
             raise RuntimeError("fault injection found no active connection")
-        print(f"Network interruption {index}/3 completed", flush=True)
+        print(f"Network interruption {index}/{total} completed", flush=True)
 
     async def close(self):
         for writer in list(self.writers):
@@ -192,7 +194,7 @@ async def stop(process):
 
 async def run(args, directory):
     sdk_revision = command(["git", "rev-parse", "HEAD"], cwd=SDK).stdout.strip()
-    sdk_status = command(["git", "status", "--porcelain", "--untracked-files=no"], cwd=SDK).stdout
+    sdk_status = command(["git", "status", "--porcelain", "--untracked-files=all"], cwd=SDK).stdout
     source = args.server_source.resolve()
     revision = command(["git", "rev-parse", "HEAD"], cwd=source).stdout.strip()
     if revision != SERVER_REVISION:
@@ -316,10 +318,15 @@ dir="{directory}/logs"
             peer_receipt = json.loads(peer_output)
             if peer.returncode or peer_receipt.get("status") != "pass" or peer_receipt["replies"] < receipt["completed"]:
                 raise RuntimeError("JS peer failed or did not confirm replies")
-            if sdk_revision != command(["git", "rev-parse", "HEAD"], cwd=SDK).stdout.strip() or sdk_status != command(["git", "status", "--porcelain", "--untracked-files=no"], cwd=SDK).stdout:
+            group_receipt = await asyncio.wait_for(run_group(executables / "group_acceptance", api, ws, tls, der, env, Proxy, stop), timeout=180)
+            receipt["group"] = group_receipt
+            if sdk_revision != command(["git", "rev-parse", "HEAD"], cwd=SDK).stdout.strip() or sdk_status != command(["git", "status", "--porcelain", "--untracked-files=all"], cwd=SDK).stdout:
                 raise RuntimeError("SDK source changed during acceptance")
             receipt.update(distribution)
             receipt.update({"server_revision": revision, "sdk_revision": sdk_revision, "sdk_tree_clean": not sdk_status.strip(), "js_package": "easyjssdk@2.0.4", "topology": "single-node cluster", "hash_slots": 256, "token_auth_on": True, "incorrect_token": "rejected", "transport": "WSS with verified private CA and hostname", "rust_rust": "pass", "network_cuts": proxy.cut_receipts, "peer": peer_receipt})
+        except BaseException:
+            receipt = None
+            raise
         finally:
             if faults:
                 faults.cancel()
