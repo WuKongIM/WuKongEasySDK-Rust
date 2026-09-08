@@ -121,3 +121,18 @@ python3 tests/acceptance/run.py --server-source test-server --seconds 120
 测试使用临时 CA、合成身份、回环监听，并清理自己启动的进程。
 成功回执 `.acceptance/receipt.json` 记录精确源码、消息数量、断网恢复与清理；
 该有限时长验收不代表容量或多日稳定性结论。
+
+
+## Published package acceptance
+
+The real-server harness can build its probes as an independent consumer of
+`wukong-easy-sdk = "=0.1.0"`. Registry mode starts with an empty Cargo cache,
+verifies the public archive checksum and source identity, and uses no SDK path
+or Git dependency. Both modes retain separate receipts in CI.
+
+```sh
+python3 tests/acceptance/run.py --server-source test-server --distribution registry --seconds 120 --output .acceptance/registry.json
+```
+
+The server checkout must be the documented pinned revision. A registry receipt
+names the released package source separately from the harness revision.
